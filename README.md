@@ -154,25 +154,3 @@ clh                                # nerdlab-harness 플러그인 로드
 |------|------|------|
 | **본 저장소 (nerdlab-harness)** | `tasks/*` 를 `.gitignore`, `tasks/.gitkeep` 만 commit | 하네스 본체만 관리. 작업 부산물은 보존 불필요. |
 | **하네스를 사용하는 프로젝트** | `tasks/` 전체 commit 권장 | plan(의사결정)과 실행 이력(phase 로그)을 PR/리뷰에서 추적 |
-
-## 로드맵
-
-완료 (2026-04-25 ~ 26):
-
-- [x] 3+1 파이프라인 흐름 결정 + spec 명세 분리 + plugin 정공법(`--plugin-dir`) 셋업
-- [x] `nl-plan` / `nl-generate` / `nl-review` / `nl-setup` SKILL + `planner` / `coder` / `reviewer` / `explorer` + tdd 변형 prompts
-- [x] `scripts/run_phases.py` (~940줄) — phase 직렬 + 3중 안전망 + `--tdd` / `--inline` / `--resume` + `BLOCKED:` escalate + reviewer phase 슬라이스
-- [x] `scripts/validate_plan.py` (~196줄) — plan-template ★ 12개 섹션 검증
-- [x] **5단계 모델** — (1) Clarify 메인 직접 + (2) Context Gather Phase A+B + (5) Evaluate 게이트 본구현
-- [x] **(B0) `/nl-setup`** — git init + 표준 메타 문서 5종 + `templates/` + `setup-protocol.md`
-- [x] **(B1) git 가드** — `.git` 존재 / clean tree / main 자동 feat 분기 / phase passed 자동 commit / failed 리포트 (EXIT_CODE_GIT_GUARD=6)
-- [x] **(C) 강제성 명문화** — `docs/philosophy.md` 섹션 6 "이 하네스가 강제하는 것" 7항목 표 + 단일 진실 출처 매핑
-- [x] unittest 126/126 PASS (run_phases 90 + validate_plan 36)
-
-진행 중 / 다음:
-
-- [ ] `nl-ship` 본구현 — git push / develop 머지 / main rebase / PR 생성
-- [ ] 외부 프로젝트 실호출 검증 묶음 — (1b) 모호 입력 / (2) 빈 코드 / (5) typecheck 깨짐 / (B0) self-apply / (B1) clean-tree happy-path
-- [ ] `context-protocol.md` 보강 — git ls-files 0 (init 직후 추적 0) 케이스
-- [ ] hooks 도입 (`dangerous-cmd-guard` 우선)
-- [ ] marketplace 공개 검토

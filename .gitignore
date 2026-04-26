@@ -1,0 +1,13 @@
+.DS_Store
+node_modules/
+*.log
+.env
+.env.local
+.idea/
+.vscode/
+.claude/
+
+# 본 저장소: tasks/ 작업 부산물 무시 (.gitkeep 만 commit)
+# 하네스를 사용하는 프로젝트는 tasks/ 전체 commit 권장 — README "tasks/ 디렉토리 정책" 참조
+tasks/*
+!tasks/.gitkeep

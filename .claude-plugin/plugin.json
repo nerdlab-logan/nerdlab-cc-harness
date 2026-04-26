@@ -1,0 +1,9 @@
+{
+  "name": "nerdlab-harness",
+  "version": "0.1.0",
+  "description": "사용자 워크플로우에 맞춘 미니멀 4단계 하네스 (기획→구현→검증→배포)",
+  "author": {
+    "name": "tiredman",
+    "email": "lbsneo@gmail.com"
+  }
+}

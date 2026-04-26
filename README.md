@@ -1,14 +1,17 @@
 # nerdlab-harness
 
-사용자 워크플로우에 맞춘 미니멀 Claude Code 하네스. `기획 → (phase 직렬 + 개발+검증 루프) → 배포` 흐름만 추려서, 범용 하네스(gstack/superpowers)의 토큰 폭발 없이 핵심만 자동화한다.
+특정 워크플로우(헤드리스 격리 + 단계 분리 + 강제 입출력)를 따르려는 사람을 위한 미니멀 Claude Code 하네스. **범용성 X** — 자유로운 즉흥 코딩 도우미가 필요하면 다른 SKILL/플러그인 사용.
+
+5단계 모델 `Clarify → Context Gather → Plan → Generate → Evaluate` 를 강제해 매 호출마다 같은 품질이 나오게 한다. 범용 하네스(gstack/superpowers)의 토큰 폭발 없이 핵심만 자동화.
 
 ## 설계 철학 (한 줄씩)
 
-1. **헤드리스 격리** — 각 단계는 `claude -p` 헤드리스 세션, 메인은 호출자 + 결과 전달자
+1. **헤드리스 격리** — 각 단계는 `claude -p` 헤드리스 세션, 메인은 호출자 + 결과 전달자 (clarify / Phase A / eval 만 명시적 예외)
 2. **모델 분리** — 의사결정(기획·검증)은 Opus, 실행(구현)은 Sonnet
 3. **개발·검증 루프** — coder ↔ reviewer 한 사이클, 종료 조건 3중 안전망
 4. **phase 직렬 실행** — 큰 작업은 phase 로 분해, python script 가 직렬 오케스트레이션 (메인 부담 ↓)
-5. **지연 로딩** — 두꺼운 명세는 `docs/spec/` 단일 진실 출처에 두고 SKILL/prompt 는 링크만
+5. **지연 로딩 + 단일 진실 출처** — 두꺼운 명세는 `docs/spec/` 6개 파일에 두고 SKILL/prompt 는 링크만
+6. **강제하는 것 7항목** — plan-template ★ 12개 / Clarify ★ 6개 / Context Gather Phase A+B / reviewer YAML / Evaluate 게이트 / git 가드 / 헤드리스 통일 ([philosophy.md §6](docs/philosophy.md))
 
 자세한 내용은 [docs/philosophy.md](docs/philosophy.md).
 
@@ -17,52 +20,67 @@
 ```
 nerdlab-harness/
 ├── .claude-plugin/plugin.json   # 플러그인 메타데이터
-├── skills/                      # 슬래시 명령
-│   ├── nl-setup/                # /nl-setup    — 1회성 프로젝트 부트스트랩
-│   ├── nl-plan/                 # /nl-plan     — 기획 (planner Opus)
-│   ├── nl-generate/             # /nl-generate — phase 직렬 + 개발+검증 루프
+├── skills/                      # 슬래시 명령 (5종)
+│   ├── nl-setup/                # /nl-setup    — 1회성 프로젝트 부트스트랩 (메인 직접)
+│   ├── nl-plan/                 # /nl-plan     — Clarify → Context → planner (Opus)
+│   ├── nl-generate/             # /nl-generate — phase 직렬 + coder↔reviewer 루프 + Evaluate + git 가드
 │   ├── nl-review/               # /nl-review   — 독립 진입점 (PR/ad-hoc 검토)
-│   └── nl-ship/                 # /nl-ship     — 배포 (git)
-├── prompts/                     # 헤드리스 세션 시스템 프롬프트
-│   ├── planner.md               # Opus
-│   ├── coder.md                 # Sonnet
-│   └── reviewer.md              # Opus
+│   └── nl-ship/                 # /nl-ship     — 배포 (placeholder, 다음 트랙)
+├── prompts/                     # 헤드리스 세션 시스템 프롬프트 (6종)
+│   ├── planner.md               # Opus — 기획
+│   ├── coder.md / coder_tdd.md  # Sonnet — 구현 (--tdd 변형)
+│   ├── reviewer.md / reviewer_tdd.md  # Opus — 검증 (--tdd 변형)
+│   └── explorer.md              # Sonnet — Context Gather Phase B
 ├── scripts/
-│   └── run_phases.py            # phase 직렬 실행 + 상태 관리 (다음 세션 본구현)
-├── hooks/                       # (placeholder)
+│   ├── run_phases.py            # phase 직렬 + 루프 + 옵션 + git 가드 + Evaluate (~940줄)
+│   └── validate_plan.py         # plan-template ★ 12개 섹션 검증 (~196줄)
 ├── docs/
-│   ├── philosophy.md            # 설계 결정 기록
-│   └── spec/
-│       ├── plan-template.md     # planner 출력 형식
-│       └── reviewer-output.md   # reviewer 출력 스키마
-├── tasks/                       # plan + 실행 기록 저장 (본 저장소는 비움 — .gitignore)
+│   ├── philosophy.md            # 설계 철학 6 섹션 + 강제하는 것 7항목 표
+│   └── spec/                    # 단일 진실 출처 (6종)
+│       ├── plan-template.md     # planner 출력 형식 (★ 12)
+│       ├── reviewer-output.md   # reviewer YAML 스키마
+│       ├── clarify-protocol.md  # 입력 ★ 6개 + 라운드 룰
+│       ├── context-protocol.md  # Phase A(결정적) + Phase B(헤드리스)
+│       ├── git-guard-protocol.md # /nl-generate 진입 가드
+│       └── setup-protocol.md    # /nl-setup 5단계
+├── templates/                   # /nl-setup 가 복사하는 표준 메타 문서
+│   ├── CLAUDE.md
+│   ├── docs/architecture.md
+│   ├── docs/coding-conventions.md
+│   ├── docs/adr/0000-template.md
+│   └── docs/prd.md
+├── tasks/                       # plan + 실행 기록 (본 저장소는 비움 — .gitignore)
 │   └── <task-name>/
 │       ├── plan.md              # planner 출력
 │       ├── status.json          # 전체 진척
-│       ├── phase{N}.status.json # phase 별 상태
 │       └── phase{N}-round{M}.log
-└── README.md
+├── tests/                       # unittest (run_phases 90 + validate_plan 36 = 126 PASS)
+└── TODO.md                      # 작업 시계열 기록
 ```
 
 ## 파이프라인
 
 ```
-요구사항 ──▶ /nl-plan ──▶ tasks/<task-name>/plan.md ──▶ /nl-generate ──▶ /nl-ship
-            (planner)                                  (run_phases.py        (git)
-            Opus                                        + coder ↔ reviewer)  Sonnet/Haiku
-                                                        Sonnet ↔ Opus
+[1회성]   /nl-setup ──▶ git init + CLAUDE.md / architecture / ADR / coding-conventions / [opt] PRD
+                       (메인 직접 + AskUserQuestion)
 
-                              /nl-review ─ 독립 진입점 (build 외부, PR/ad-hoc)
-                              (reviewer Opus)
+[매 작업] 요구사항 ──▶ /nl-plan ──▶ tasks/<task>/plan.md ──▶ /nl-generate ──▶ /nl-ship
+                       Clarify(메인)                       run_phases.py:        (placeholder)
+                       Context Gather                      coder ↔ reviewer
+                       planner Opus                        + Evaluate + git 가드
+                                                           Sonnet ↔ Opus
+
+[독립]    /nl-review ─ build 외부 진입점 (PR/ad-hoc)
+                       reviewer Opus
 ```
 
 | 명령 | 역할 | 모델 | 출력 |
 |------|------|------|------|
-| `/nl-setup` | 1회성 프로젝트 부트스트랩 (git init + 표준 메타 문서) | — (메인 직접) | CLAUDE.md / architecture / ADR / prd |
-| `/nl-plan` | 요구사항 → 구체적 plan 생성 | Opus (planner) | `tasks/<task-name>/plan.md` |
-| `/nl-generate` | plan → phase 직렬 + 구현+검증 루프 (`--tdd` / `--inline` / `--resume`) | Sonnet ↔ Opus | 변경 파일 + `tasks/<task-name>/status.json` |
-| `/nl-review` | 독립 코드 리뷰 (build 외부) | Opus (reviewer) | 결함 리스트 |
-| `/nl-ship` | git 워크플로우 (commit → develop → main) | Sonnet/Haiku | 커밋·PR |
+| `/nl-setup` | 1회성 프로젝트 부트스트랩 (git init + 표준 메타 문서 5종) | — (메인 직접) | `CLAUDE.md` / `docs/architecture.md` / `docs/coding-conventions.md` / `docs/adr/0000-template.md` / `[docs/prd.md]` |
+| `/nl-plan` | 요구사항 → Clarify ★6 + Context Gather → plan ★12 | Opus (planner) | `tasks/<task-name>/plan.md` |
+| `/nl-generate` | plan → phase 직렬 + 구현+검증 루프 + Evaluate + git 가드 (`--tdd` / `--inline` / `--resume`) | Sonnet ↔ Opus | 변경 파일 + `tasks/<task-name>/status.json` + 자동 phase commit |
+| `/nl-review` | 독립 코드 리뷰 (build 외부, plan optional) | Opus (reviewer) | YAML 결함 리스트 |
+| `/nl-ship` | git 배포 워크플로우 (commit / push / PR) | — | (placeholder, 다음 트랙) |
 
 ## /nl-generate 루프 종료 조건 (3중 안전망)
 
@@ -89,7 +107,7 @@ phase 단위:
 이 저장소를 clone 한 디렉토리에서 `--plugin-dir` 로 Claude Code 를 띄운다.
 
 ```bash
-git clone https://github.com/nerdlab/nerdlab-harness.git ~/Developer/own/cc-marketplace/nerdlab-harness
+git clone git@github.com:nerdlab-logan/nerdlab-cc-harness.git ~/Developer/own/cc-marketplace/nerdlab-harness
 cd ~/Developer/own/cc-marketplace/nerdlab-harness
 claude --plugin-dir .
 ```
@@ -102,7 +120,33 @@ claude --plugin-dir .
 alias clh='claude --plugin-dir ~/Developer/own/cc-marketplace/nerdlab-harness'
 ```
 
-> 헤드리스 통일 구조라 `~/.claude/agents/` 또는 `~/.claude/skills/` 에 별도 등록할 파일은 없다. 이전 버전에서 사용하던 `~/.claude/skills/nl-*` symlink 가 남아 있다면 제거.
+> 헤드리스 통일 구조라 `~/.claude/agents/` 또는 `~/.claude/skills/` 에 별도 등록할 파일은 없다.
+
+## 사용 흐름 — 처음부터 끝까지
+
+신규 프로젝트:
+
+```bash
+mkdir my-project && cd my-project
+clh                                # nerdlab-harness 플러그인 로드
+> /nerdlab-harness:nl-setup        # git init + CLAUDE.md / architecture / ADR / coding-conventions / [PRD]
+> /nerdlab-harness:nl-plan "X 기능 추가"
+                                   # 메인이 Clarify ★6 묶음 질문 (모호하면 최대 2 라운드)
+                                   # → Context Gather Phase A(git ls-files / grep) + Phase B(헤드리스 익스플로러)
+                                   # → planner 헤드리스 호출 → tasks/x-feature/plan.md
+> /nerdlab-harness:nl-generate tasks/x-feature/plan.md
+                                   # git 가드 (clean tree + .git 존재 확인)
+                                   # → main 이면 feat/x-feature 자동 분기
+                                   # → phase 1 coder ↔ reviewer 루프 → Evaluate(typecheck/test) → 자동 commit
+                                   # → phase 2... → 모든 phase passed
+> /nerdlab-harness:nl-review       # 필요 시 독립 검토
+```
+
+옵션:
+
+- `/nerdlab-harness:nl-generate <plan> --tdd` — coder/reviewer 가 TDD 사이클 강제
+- `/nerdlab-harness:nl-generate <plan> --inline` — phase 1 짜리 작은 작업은 메인 직접 (헤드리스 오버헤드 회피)
+- `/nerdlab-harness:nl-generate <plan> --resume` — 중단된 phase 부터 재개
 
 ## tasks/ 디렉토리 정책
 
@@ -113,19 +157,22 @@ alias clh='claude --plugin-dir ~/Developer/own/cc-marketplace/nerdlab-harness'
 
 ## 로드맵
 
-- [x] 4단계 → 3+1단계 흐름 결정 + spec 명세 분리 (2026-04-26)
-- [x] `nl-plan` SKILL.md + `planner.md` 본구현 (2026-04-26)
-- [x] `docs/spec/plan-template.md` + `docs/spec/reviewer-output.md` (2026-04-26)
-- [x] `tasks/<task-name>/` 통합 디렉토리 + `.gitignore` 정책 (2026-04-26)
-- [x] plan-template `Phase 분해` 섹션 추가 + planner 휴리스틱 (2026-04-26)
-- [x] `reviewer.md` 본구현 + `nl-review` SKILL.md (plan 컨텍스트 optional) (2026-04-26)
-- [x] `scripts/run_phases.py` + `coder.md` + `nl-generate` SKILL.md 본구현 (2026-04-26)
-- [x] `--tdd` / `--inline` / `BLOCKED:` escalate / reviewer phase 슬라이스 옵션 (2026-04-26)
-- [x] plugin 정공법(`--plugin-dir`) 셋업 (2026-04-26)
-- [x] `nl-setup` SKILL.md + `setup-protocol.md` + `templates/` 5종 (2026-04-26)
-- [ ] (A) plan 이전 요구사항 정리 단계 (`nl-spec` vs plan self-review)
-- [ ] (B) `nl-generate` 의 git 강제 + worktree
-- [ ] (C) `docs/philosophy.md` 강제성 섹션 명문화
-- [ ] `nl-ship` 본구현 ((A)(B)(C) 정착 후)
-- [ ] hooks 추가 (`dangerous-cmd-guard` 우선)
+완료 (2026-04-25 ~ 26):
+
+- [x] 3+1 파이프라인 흐름 결정 + spec 명세 분리 + plugin 정공법(`--plugin-dir`) 셋업
+- [x] `nl-plan` / `nl-generate` / `nl-review` / `nl-setup` SKILL + `planner` / `coder` / `reviewer` / `explorer` + tdd 변형 prompts
+- [x] `scripts/run_phases.py` (~940줄) — phase 직렬 + 3중 안전망 + `--tdd` / `--inline` / `--resume` + `BLOCKED:` escalate + reviewer phase 슬라이스
+- [x] `scripts/validate_plan.py` (~196줄) — plan-template ★ 12개 섹션 검증
+- [x] **5단계 모델** — (1) Clarify 메인 직접 + (2) Context Gather Phase A+B + (5) Evaluate 게이트 본구현
+- [x] **(B0) `/nl-setup`** — git init + 표준 메타 문서 5종 + `templates/` + `setup-protocol.md`
+- [x] **(B1) git 가드** — `.git` 존재 / clean tree / main 자동 feat 분기 / phase passed 자동 commit / failed 리포트 (EXIT_CODE_GIT_GUARD=6)
+- [x] **(C) 강제성 명문화** — `docs/philosophy.md` 섹션 6 "이 하네스가 강제하는 것" 7항목 표 + 단일 진실 출처 매핑
+- [x] unittest 126/126 PASS (run_phases 90 + validate_plan 36)
+
+진행 중 / 다음:
+
+- [ ] `nl-ship` 본구현 — git push / develop 머지 / main rebase / PR 생성
+- [ ] 외부 프로젝트 실호출 검증 묶음 — (1b) 모호 입력 / (2) 빈 코드 / (5) typecheck 깨짐 / (B0) self-apply / (B1) clean-tree happy-path
+- [ ] `context-protocol.md` 보강 — git ls-files 0 (init 직후 추적 0) 케이스
+- [ ] hooks 도입 (`dangerous-cmd-guard` 우선)
 - [ ] marketplace 공개 검토

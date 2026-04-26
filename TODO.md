@@ -436,7 +436,7 @@ claude --plugin-dir .
 ```
 
 → 갈래:
-1. **`nl-ship` 본구현** — git push / develop 머지 / main rebase / PR 생성. CLAUDE.md 워크플로우 + (1)(2)(5)(B0)(B1)(C) 모두 정착 → 자연스러운 다음 단계. 추천.
+1. **`nl-ship` 본구현** — git push + main PR(squash merge) + commit-message 스킬 위임. GitHub flow 기준 (develop 브랜치 X). CLAUDE.md 워크플로우 + (1)(2)(5)(B0)(B1)(C) 모두 정착 → 자연스러운 다음 단계. 추천.
 2. **외부 검증 묶음** — (1b) 모호 / (2) 빈 코드 / (5) typecheck / (B0) self-apply / (B1) clean-tree happy-path 외부 프로젝트 셋업 후 일괄 시뮬레이션. 5개 잔여 검증 한 번에 처리.
 3. **hooks 도입** — `dangerous-cmd-guard` 우선. (B1) git 가드와 직교 트랙.
 4. **context-protocol.md 갱신** — git ls-files 0 (init 직후 추적 0) 케이스 명시. 작은 단발 작업.

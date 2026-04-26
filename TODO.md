@@ -373,6 +373,38 @@
 - 트레이드오프 인상: 강제 항목을 한 표로 묶는 결정 → 추가/제거 시 한 곳만 갱신 + 사용자가 "이 도구가 뭘 강제하는지" 한 눈에 파악 가능. 단일 진실 출처 매핑 한 줄로 spec 책임 분리 재확인. nl-review frontmatter 정리는 끼워넣기 (별도 작업 분리 X) — 한 트랙 묶음 효율
 - 자기 정합성: 본 작업도 git 가드 안 탐 (메인 직접, /nl-generate 미경유). 가드 작동은 다음 /nl-generate 호출부터
 
+#### nl-ship 워크플로우 GitHub flow 정렬 (단발 작업, 메인 직접)
+- 사용자 지적: ~/.claude/CLAUDE.md 글로벌 룰의 옛 워크플로우(develop 머지)가 컨텍스트에 자동 주입되어 하네스 내부 표현에 잔존. 사용자 현재 워크플로우는 GitHub flow (develop 브랜치 X — (B0) templates/CLAUDE.md 합의 일치)
+- grep 발견 4곳 → 활성 모순 3곳 수정 + 1곳 보존:
+  - `skills/nl-ship/SKILL.md:3` frontmatter "commit → develop merge → push → main rebase → PR" → "commit → push → main PR (squash merge)"
+  - `skills/nl-ship/SKILL.md:10` "feature → develop → main 자동화" → "feat/<task> → main PR (GitHub flow, squash merge) 자동화" + squash-merge-convention.md 자산 추가
+  - `TODO.md:439` 다음 세션 가이드: "develop 머지 / main rebase" → "main PR (squash merge) + commit-message 위임"
+  - `TODO.md:301` Done 기록 보존 (옛 사고 시계열 역사)
+- commit `52ac283` push 완료. nl-ship 본구현 진입 전 전제 정렬
+
+#### nl-ship 본구현 (★ /nl-plan → /nl-generate 열 번째 실호출, TDD no, phase 2 직렬)
+- 결정 합의 (사용자 추천 일괄 채택): A=phase 미완료 stderr 경고만 / B=메인 직접(헤드리스 X) / C=/nl-plan→/nl-generate 사이클 / D=PR base branch 자동 감지(`gh repo view --json defaultBranchRef`) / E=`--draft` 옵션 / F=첫 push -u 자동
+- `/nl-plan` 헤드리스 호출 → `tasks/nl-ship-impl/plan.md` 자동 생성 (phases 2 직렬, TDD no, 164줄). planner 가 사용자 입력 ★ 6 + 추가 결정 + 본문 1차안 + Context Gather 결과를 plan 통합. validate_plan 통과
+- `/nl-generate tasks/nl-ship-impl/plan.md` background → exit 0 (~5분)
+  - **자동 git 가드 작동 ✓**: main 브랜치 + clean tree → `feat/nl-ship-impl` 자동 분기
+  - **Phase 1 (spec-and-skill)**: round 1 passed. coder 가 `skills/nl-ship/SKILL.md` placeholder 16줄 → 본구현 55줄 교체 + `docs/spec/ship-protocol.md` 89줄 신규 (Step 1~5 본문 + 의사코드 + 안티패턴). reviewer status: ok. 자동 commit `6af9d3f`
+  - **Phase 2 (docs-integration)**: round 1 passed. coder 가 `README.md` 154→157줄 갱신 (디렉토리 트리 nl-ship 주석 / 파이프라인 다이어그램 / 명령 표 / 사용 흐름). reviewer status: ok. 자동 commit `779086c`
+- 검증 4가지 통과:
+  - **unittest: 126/126 PASS** (코드 미변경 회귀 없음)
+  - `validate_plan.py tasks/nl-ship-impl/plan.md` → `★ 섹션 검증 통과`
+  - 사람 눈: SKILL 5단계(사전 검사 / push / PR 본문 / gh pr create / URL 출력) + ship-protocol.md 단일 진실 출처 + README 4곳 모두 정합
+  - 자동 commit 2개 정확 (feat 메시지 형식 + phase 단위)
+- **★ self-test 메타 검증 통과 ✓**: 본 SKILL 본구현 직후 본 SKILL 호출(`/nerdlab-harness:nl-ship`)로 본 SKILL 의 PR 생성 → 머지
+  - 사전 검사: `gh --version` 2.89.0 / `git status --porcelain` clean / `git branch --show-current` feat/nl-ship-impl (main 아님) → 통과
+  - push: `git push -u origin feat/nl-ship-impl` 신규 브랜치 생성 + upstream 추적
+  - base branch: `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` → `main`
+  - PR 생성: `gh pr create` → https://github.com/nerdlab-logan/nerdlab-cc-harness/pull/1
+  - PR 머지: `gh pr merge 1 --squash --delete-branch` → squash commit `4e01ac1` (메시지 형식: `feat(nl-ship): SKILL 본구현으로 main PR(squash merge) 자동 생성 (#1)` + 변경 요약 4 bullet, ~/.claude/docs/git/squash-merge-convention.md 형식 정확)
+  - 로컬 동기화: `git checkout main && git pull` (Already up to date — gh merge 가 main 자동 동기화) + `git fetch --prune` 으로 stale `origin/feat/nl-ship-impl` 정리
+- 트레이드오프 인상: **메인 직접(헤드리스 X) + commit-message 스킬 위임** 결정 → gh CLI 인터랙션 + 메인 컨텍스트 청결 (stdout 5줄 압축) 둘 다 달성. SKILL 5단계 = 다른 SKILL 본구현(nl-plan/nl-generate/nl-review/nl-setup) 패턴 그대로. self-test 가능한 구조 — 본 SKILL 이 본 PR 을 만든 첫 사례, 강제 흐름의 자기 검증 패턴 정착
+- 잠재 결함 1: PR 본문 생성 단계 commit-message 스킬 위임은 명세만, self-test 에선 메인이 직접 PR 본문 작성. commit-message SKILL 실호출 위임은 다음 사용 시 검증 (외부 트랙)
+- 잠재 결함 2: phase 미완료(escalate 잔여) 시 stderr 경고만 정책은 명세만, 실호출 검증 미수행. 외부 트랙 묶음 추가
+
 ---
 
 ## Next (우선순위 순 — 5단계 모델 기준)
@@ -426,7 +458,7 @@
 
 ## 다음 세션 진입 한 줄 가이드
 
-**(C) philosophy 강제성 섹션 명문화 완료** — `docs/philosophy.md` 71→93줄, 섹션 6 "이 하네스가 강제하는 것" 신설. "범용성 X" 정체성 한 단락 + 강제 항목 7개 단일 표(plan-template / Clarify / Context / reviewer YAML / Evaluate / git 가드 / 헤드리스 통일) + 단일 진실 출처 매핑(spec 5개) + 강제 항목 갱신 룰. `nl-review` SKILL frontmatter "서브에이전트" → "헤드리스" 정정 동시 처리. unittest 126/126 PASS 회귀 없음.
+**nl-ship 본구현 + self-test 완료** — `skills/nl-ship/SKILL.md` 16→55줄 + `docs/spec/ship-protocol.md` 89줄 신규 + `README.md` 4곳 갱신. /nl-generate phase 1+2 round 1 passed + 자동 commit 2개. **★ self-test**: 본 SKILL 호출로 본 PR(#1) 생성 → squash merge(`4e01ac1`) → 로컬 main 동기화. 5개 SKILL(setup/plan/generate/review/ship) + 6개 spec + (1)(2)(5)(B0)(B1)(C) 5단계 모델 + 강제성 + GitHub flow 정합 모두 정착. unittest 126/126 PASS.
 
 **다음 세션 진입 즉시:**
 
@@ -436,14 +468,12 @@ claude --plugin-dir .
 ```
 
 → 갈래:
-1. **`nl-ship` 본구현** — git push + main PR(squash merge) + commit-message 스킬 위임. GitHub flow 기준 (develop 브랜치 X). CLAUDE.md 워크플로우 + (1)(2)(5)(B0)(B1)(C) 모두 정착 → 자연스러운 다음 단계. 추천.
-2. **외부 검증 묶음** — (1b) 모호 / (2) 빈 코드 / (5) typecheck / (B0) self-apply / (B1) clean-tree happy-path 외부 프로젝트 셋업 후 일괄 시뮬레이션. 5개 잔여 검증 한 번에 처리.
+1. **외부 검증 묶음** — (1b) 모호 입력 / (2) 빈 코드 스킵 / (5) typecheck 깨짐 / (B0) self-apply / (B1) clean-tree happy-path / (nl-ship) commit-message 위임 + phase 미완료 경고 → 외부 프로젝트 셋업 후 일괄 시뮬레이션. 6개 잔여 검증 한 번에. 추천.
+2. **`context-protocol.md` 보강** — git ls-files 0 (init 직후 추적 0) 케이스 명시. 작은 단발 작업.
 3. **hooks 도입** — `dangerous-cmd-guard` 우선. (B1) git 가드와 직교 트랙.
-4. **context-protocol.md 갱신** — git ls-files 0 (init 직후 추적 0) 케이스 명시. 작은 단발 작업.
+4. **marketplace 공개 검토** — 위 셋 정착 후.
 
-추천 순서: **1 (nl-ship) → 2 (외부 검증) → 4 (context-protocol 보강) → 3 (hooks)**.
-
-이후 트랙: nl-ship → 외부 검증 → hooks → marketplace.
+추천 순서: **1 (외부 검증) → 2 (context-protocol 보강) → 3 (hooks) → 4 (marketplace)**.
 
 ---
 
@@ -474,6 +504,6 @@ claude --plugin-dir .
 - [x] **planner 프롬프트 갱신** — `prompts/planner.md` 절대 규칙 6 추가 + 핸드오프 한 줄 보강(70→72줄). 1차안 본문 인라인 인용 강제 → coder 자율 판단 합의 위배 재발 방지 (2026-04-26)
 - [x] **(B1) `/nl-generate` git 가드 본구현** — 헬퍼 4 + EXIT_CODE_GIT_GUARD=6 + main() 분기 + phase passed commit + failed 리포트(`run_phases.py` 842→938줄). `docs/spec/git-guard-protocol.md` 신규(83줄). `nl-generate/SKILL.md` 49→59줄. TestGitGuard 5 시나리오 + 보조 2 = unittest 119→**126/126 PASS**. **자기 검증 ✓** (dirty 차단 메시지 + exit 6 정확) (2026-04-26). 잔여: clean tree happy-path 실호출 검증(외부 트랙)
 - [x] **(C) `docs/philosophy.md` 강제성 섹션 명문화** — 섹션 6 신설(71→93줄). 범용성 X 한 단락 + 강제 항목 7개 표(plan-template/Clarify/Context/reviewer YAML/Evaluate/git 가드/헤드리스 통일) + 단일 진실 출처 매핑. nl-review SKILL frontmatter 정정 동시 처리. unittest 126/126 PASS 회귀 없음 (2026-04-26)
-- [ ] `nl-ship` 본구현 — (1)(2)(5)(B)(C) 정착 후
+- [x] **nl-ship 본구현 + self-test ✓** — `skills/nl-ship/SKILL.md` 16→55줄 본구현 + `docs/spec/ship-protocol.md` 89줄 신규 + `README.md` 갱신. /nl-generate phase 1+2 round 1 passed + 자동 commit 2개. **★ self-test**: 본 SKILL 호출로 본 SKILL 의 PR(#1) 생성 → squash merge(`4e01ac1`) → 로컬 main 동기화. unittest 126/126 PASS (2026-04-26). 잔여: commit-message 스킬 실호출 위임 / phase 미완료 stderr 경고 케이스 외부 트랙
 - [ ] hooks 추가
 - [ ] marketplace 공개 검토

@@ -25,7 +25,7 @@ nerdlab-harness/
 │   ├── nl-plan/                 # /nl-plan     — Clarify → Context → planner (Opus)
 │   ├── nl-generate/             # /nl-generate — phase 직렬 + coder↔reviewer 루프 + Evaluate + git 가드
 │   ├── nl-review/               # /nl-review   — 독립 진입점 (PR/ad-hoc 검토)
-│   └── nl-ship/                 # /nl-ship     — 배포 (placeholder, 다음 트랙)
+│   └── nl-ship/                 # /nl-ship     — main PR(squash merge) 자동 생성
 ├── prompts/                     # 헤드리스 세션 시스템 프롬프트 (6종)
 │   ├── planner.md               # Opus — 기획
 │   ├── coder.md / coder_tdd.md  # Sonnet — 구현 (--tdd 변형)
@@ -65,7 +65,7 @@ nerdlab-harness/
                        (메인 직접 + AskUserQuestion)
 
 [매 작업] 요구사항 ──▶ /nl-plan ──▶ tasks/<task>/plan.md ──▶ /nl-generate ──▶ /nl-ship
-                       Clarify(메인)                       run_phases.py:        (placeholder)
+                       Clarify(메인)                       run_phases.py:        PR(squash merge)
                        Context Gather                      coder ↔ reviewer
                        planner Opus                        + Evaluate + git 가드
                                                            Sonnet ↔ Opus
@@ -80,7 +80,7 @@ nerdlab-harness/
 | `/nl-plan` | 요구사항 → Clarify ★6 + Context Gather → plan ★12 | Opus (planner) | `tasks/<task-name>/plan.md` |
 | `/nl-generate` | plan → phase 직렬 + 구현+검증 루프 + Evaluate + git 가드 (`--tdd` / `--inline` / `--resume`) | Sonnet ↔ Opus | 변경 파일 + `tasks/<task-name>/status.json` + 자동 phase commit |
 | `/nl-review` | 독립 코드 리뷰 (build 외부, plan optional) | Opus (reviewer) | YAML 결함 리스트 |
-| `/nl-ship` | git 배포 워크플로우 (commit / push / PR) | — | (placeholder, 다음 트랙) |
+| `/nl-ship` | git 배포 워크플로우 (사전 검사 → push → main PR squash merge) | — (메인 직접) | PR URL + squash 미리보기 |
 
 ## /nl-generate 루프 종료 조건 (3중 안전망)
 
@@ -140,6 +140,7 @@ clh                                # nerdlab-harness 플러그인 로드
                                    # → phase 1 coder ↔ reviewer 루프 → Evaluate(typecheck/test) → 자동 commit
                                    # → phase 2... → 모든 phase passed
 > /nerdlab-harness:nl-review       # 필요 시 독립 검토
+> /nerdlab-harness:nl-ship         # feat/<task> → push → main PR (squash merge) → PR URL
 ```
 
 옵션:

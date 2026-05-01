@@ -407,6 +407,66 @@
 
 ---
 
+## 2026-04-28
+
+### Done
+
+#### 외부 검증 묶음 1차 — 5/6 통과 + 본 하네스 회귀 결함 2건 발견·수정 (★ 외부 검증의 진짜 가치 = 결함 발견)
+- 외부 검증 환경 셋업: `~/Developer/playground/nl-validation/` 신설. `empty-codebase/` (빈 디렉토리, .git 없음) + `clean-python/` (Python 미니 프로젝트 — `pyproject.toml` mypy strict + ruff + pytest, `src/greeter/{__init__,core}.py` + `tests/test_core.py`, `.venv/` mypy 1.19 / ruff 0.15 / pytest 8.4, `git init -b main` + initial commit)
+- 진행 방식: 처음 (2)(B0)(1b) 세 시나리오는 사용자가 새 터미널에서 `cd <case>/ && claude --plugin-dir ~/.../nerdlab-harness` 띄워 SKILL 실호출. (B1)(5) 는 메인이 cwd 변경 + run_phases 직접 호출로 처리(결정적 동작 위주). (1b) 만 컨텍스트 0 진실성 위해 새 세션 강제
+
+##### (2) 빈 코드 스킵 — 통과
+- `/nerdlab-harness:nl-plan 간단한 hello 출력하는 Python 스크립트 추가` → clarify ★ 6 통과 → **Context Gather Phase A 가 `.git` 부재 자동 감지 → CONTEXT="none (empty codebase)" 스킵** → planner stdout 5줄 정확
+- 산출물: `tasks/add-hello-script/plan.md` (12 섹션 모두 채움, validate_plan 통과). `## 11. Context = none (empty codebase)` 한 줄 정확. `**본문 1차안:**` 코드 블록(planner 절대 규칙 6) 정확
+
+##### (B0) `.git` 존재 시 self-apply — 통과
+- clean-python (이미 git init) 에서 `/nerdlab-harness:nl-setup` → git 2.50.1 검출 + `.git` 존재 → init skip + AskUserQuestion 5종 묶음 + 답한 항목 templates/ 복사 + 리포트
+- 5개 파일 모두 `~/.../templates/` 와 **diff 0** (정확 복사 — 안티패턴 "복사 후 내용 수정" 준수)
+- ⚠️ **명세 결함 발견**: setup-protocol.md "5항목 1라운드" 명시 vs `AskUserQuestion` 도구 자체 `maxItems: 4` 제한 → 실제 흐름은 4 묶음 + PRD 별도 = 2 라운드. 사용자 인터랙션 1회 추가됨. spec 갱신 필요 ("4 묶음 + 별도 PRD 1개" 또는 "도구 제한으로 1~2 라운드 허용")
+- 미검증 보너스: 충돌 skip 정책 — 첫 호출이라 모두 신설. 두 번째 호출/충돌 케이스는 외부 트랙 별도
+
+##### (1b) 모호 입력 clarify — 통과
+- empty-codebase 에서 새 세션 `/nerdlab-harness:nl-plan 메모 앱 만들어줘` → 메인이 정확히 모호함 감지 ("요구사항이 매우 추상적이라 clarify 게이트에서 ★ 6개를 보충해야 합니다") → AskUserQuestion 묶음(앱형태/저장/완료범위/스택 4 묶음 → 저장구현+안할것 추가) → 2 라운드 + 사용자 요약 확인(스킵 불가)
+- 산출물: `tasks/add-markdown-memo-app/plan.md` 170줄 — Next.js + react-markdown 마크다운 메모 앱(CRUD + 파일 영속), 12 섹션 모두 채움 + validate_plan 통과
+- **보너스 (B1) #1 검증**: 후속 `/nerdlab-harness:nl-generate` 호출 시 git 가드가 `.git` 미존재 자동 차단 → exit 6 + 정확 메시지 ("/nl-setup 으로 git 초기화 후 재실행")
+
+##### (B1) git 가드 happy-path — 4/5 통과
+- ✅ #1 .git 미존재 차단: (1b) 보너스에서 검증
+- ✅ #2 dirty 차단: clean-python 이 (B0) untracked 5종 상태 → /nl-generate → exit 6 + "git 가드: working tree 가 dirty" 정확
+- ✅ #3 main → feat 자동 분기: clean tree 후 /nl-generate → `feat/add-farewell-fn` 자동 생성
+- ✅ #4 phase passed 자동 commit: round 1 통과 → `feat(add-farewell-fn): phase-1 단일` (메시지 형식 1차안 정확) + working tree clean
+- 🔲 #5 failed 리포트: 본 검증에선 모든 phase 가 round 1 또는 round 2 에서 통과 → 미검증 (max-rounds 모두 fail 케이스 별도 외부 트랙)
+- 산출물: `tasks/add-farewell-fn/` (작성: 본 메인이 직접 작성한 plan, planner 헤드리스 호출은 (B1) 본질 아님). coder 가 `src/greeter/farewell.py` + `__init__.py` 갱신 + `tests/test_farewell.py` 정확히 작성 + Evaluate 통과(이 시점에선 결함 가려져 있어 사실 통과 아니라 스킵)
+
+##### (5) Evaluate typecheck 깨지는 코드 — **본 하네스 회귀 결함 2건 발견 → 수정 → 재검증 통과**
+- 1차 시도 (`tasks/add-reverse-fn/plan.md` — untyped reverse 함수 의도): /nl-generate → **rounds=1 passed** 라는 잘못된 결과
+  - 진단: `phase1-round1.log` 에 **`### Evaluate` 섹션이 아예 없음** → `_run_evaluate` 호출 안 됨 → 로그도 안 남음
+  - 직접 mypy 호출하면 3 errors (`Function is missing a type annotation` 등) 정확 fail → run_phases 만 게이트 무효
+- **결함 1**: `scripts/run_phases.py:51` `_EVALUATE_SECTION_RE = r"^##\s+Evaluate\s+★"` 가 **numbered prefix 미지원** → planner 가 만드는 `## 12. Evaluate ★` 헤더 못 매치 → `_parse_eval_commands` 빈 리스트 → eval_commands 가 빈 리스트면 `_run_evaluate` 호출 분기 자체 스킵. (5) 본구현 직후 부트스트랩 4회차 때 `parse_phases`/`_slice_phase_table`/`validate_plan._slice_section` 세 곳에는 `(?:\d+\.\s+)?` 추가됐는데 본 정규식만 누락된 회귀
+- **결함 2**: 결함 1 수정 후 회귀 테스트 작성 시 추가 발견 — `_parse_eval_commands` 가 코드 펜스(```) 자체를 명령으로 취급 → `subprocess.run(["```"])` → command not found → 모든 plan 의 첫 명령이 무조건 fail. 결함 1 이 가려서 안 보였던 두 번째 결함
+- 수정:
+  - `scripts/run_phases.py:51` 정규식에 `(?:\d+\.\s+)?` 추가
+  - `scripts/run_phases.py:_parse_eval_commands` 에 ` ```\` 시작 라인 continue 분기 추가
+  - `tests/test_run_phases.py` 에 `TestParseEvalCommands` 신규 5개 케이스 (plain / numbered prefix 회귀 / fenced 회귀 / none 빈 리스트 / 섹션 없음)
+- 검증: unittest **126 → 131/131 PASS**
+- 재검증: clean-python add-reverse-fn 의 round 1 결과 reset (commit + branch 삭제 + status/log 삭제) → /nl-generate 재실행 → **rounds=2 정확**
+  - **round 1**: coder 가 plan 1차안 그대로 untyped reverse 작성 → reviewer status: ok ("plan 본문 1차안과 정확히 일치 — 타입 힌트 누락은 plan 이 명시한 의도된 mypy strict 위반") → **`### Evaluate` 섹션에 mypy fail 정확 기록** (no-untyped-def + no-untyped-call, exit 1) → run_phases 가 `_make_eval_review` 로 `{status: needs-fix, issue_ids: [eval-fail], raw: ...}` 합성
+  - **round 2**: coder 가 합성 needs-fix 받아 `def reverse(s: str) -> str:` 로 타입 힌트 추가 → reviewer status: ok ("round 2 에서 타입 힌트 보완 확인") → Evaluate 모두 통과 (mypy 5 files / ruff All passed / pytest 2 passed) → phase passed → 자동 commit `037cf90 feat(add-reverse-fn): phase-1 단일`
+
+##### 트레이드오프 인상
+- **외부 검증의 진짜 가치 = 결함 2건 동시 발견**. 본 하네스 self-eval 은 plan 의 `Evaluate=none` 이 흔해서(하네스 자체는 외부 빌드 도구 없음) 우연히 회귀 누락이 가려져 있었음. 외부 mypy strict 환경에서야 비로소 진짜 게이트 작동 검증
+- planner 절대 규칙 6 (1차안 본문 인라인 인용) 효과 (2)(1b)(5) 세 케이스 모두 **본문 1차안 코드 블록 정확** — coder 가 자율 판단으로 합의 위배할 위험 차단됨
+- (B0)(B1) 자동 commit 메시지 형식 1차안 정확 (`feat(<task>): phase-<N> <name>`) — planner 절대 규칙 6 + (B1) plan 내 본문 1차안 인용 효과
+- 부트스트랩 5회차 (1b 번호 prefix / reviewer-phase-slice 행 앵커 / Evaluate depends 컬럼 / nl-setup numbered list / Evaluate 정규식+펜스) 모두 동일 패턴 — planner 가 만드는 plan 의 표현 변형이 정규식 가정과 어긋남. 향후 spec 신설 시 정규식 회귀 테스트 동시 추가 룰화 필요
+
+##### 잠재 결함
+- 잠재 결함 1: setup-protocol.md "5항목 1라운드" 명세 vs AskUserQuestion `maxItems:4` — spec 갱신 필요. 다음 세션 단발 작업
+- 잠재 결함 2: (B1) #5 failed 리포트 미검증 — round 재시도가 max-rounds 까지 다 fail 하는 케이스 미시뮬레이션. 외부 트랙 별도
+- 잠재 결함 3: nl-ship commit-message 위임 + phase 미완료 stderr 경고도 외부 트랙 별도
+- 잠재 결함 4: clean-python 의 `_parse_eval_commands` 회귀 테스트는 단위 테스트만. 정규식 + 펜스 + numbered prefix 가 동시에 깨졌을 때 진짜 plan 실호출 통합 테스트는 없음. 본 외부 검증이 그 역할을 했지만 자동화 X — 향후 외부 검증 묶음 자동화 검토
+
+---
+
 ## Next (우선순위 순 — 5단계 모델 기준)
 
 작업 순서: **(1) Clarify → (2) Context Gather → (5) Evaluate → (B) git 강제 → (C) philosophy 강제성 → nl-ship**
@@ -450,7 +510,7 @@
 
 - [x] `skills/nl-review/SKILL.md` frontmatter description "reviewer 서브에이전트" → "헤드리스 reviewer" 정정 (2026-04-26, (C) 와 함께)
 - [x] **`skills/nl-plan/SKILL.md` 위임 강화** — 145→84줄. Evaluate 가이드 30줄 → plan-template.md 이동. Context Gather/Clarify 본문 spec 위임 강화. unittest 116/116 PASS (2026-04-26)
-- [ ] 외부 프로젝트 실호출 검증 묶음: (1b) 모호 입력 / (2) 빈 코드 스킵 / (5) typecheck 깨지는 코드 / **(B0) self-apply** (이미 .git 존재 시 init 건너뛰기) / **(B1) clean-tree happy-path** (자동 feat 분기 + phase passed commit) → 다섯 같이 외부 프로젝트 셋업 후 일괄 검증
+- [x] 외부 프로젝트 실호출 검증 묶음 1차 — 5/6 통과 + 본 하네스 회귀 결함 2건 (`_EVALUATE_SECTION_RE` numbered prefix / `_parse_eval_commands` 코드 펜스) 발견·수정. unittest 126 → 131/131 PASS. (B1 #5 failed 리포트 / nl-ship 위임 / setup-protocol "1라운드" spec 갱신은 외부 트랙 잔여) (2026-04-28)
 - [x] **planner 프롬프트 갱신** — `prompts/planner.md` 절대 규칙 6번 추가 + 핸드오프 한 줄 보강 (70→72줄). user prompt 에 1차안 본문 있으면 plan.md `## 6. 변경 파일` 에 `**본문 1차안:**` 헤더 + 코드 블록으로 인라인 인용 강제. unittest 119/119 PASS 회귀 없음 (2026-04-26)
 - [ ] **context-protocol.md 갱신** — git ls-files 0 (init 직후 추적 0) 케이스 명시. 빈 코드와 다른 분기로 처리
 
@@ -458,7 +518,7 @@
 
 ## 다음 세션 진입 한 줄 가이드
 
-**nl-ship 본구현 + self-test 완료** — `skills/nl-ship/SKILL.md` 16→55줄 + `docs/spec/ship-protocol.md` 89줄 신규 + `README.md` 4곳 갱신. /nl-generate phase 1+2 round 1 passed + 자동 commit 2개. **★ self-test**: 본 SKILL 호출로 본 PR(#1) 생성 → squash merge(`4e01ac1`) → 로컬 main 동기화. 5개 SKILL(setup/plan/generate/review/ship) + 6개 spec + (1)(2)(5)(B0)(B1)(C) 5단계 모델 + 강제성 + GitHub flow 정합 모두 정착. unittest 126/126 PASS.
+**외부 검증 1차 완료 + 회귀 결함 2건 수정** — `~/Developer/playground/nl-validation/{empty-codebase, clean-python}` 셋업. (2)(B0)(1b)(B1 4/5)(5) 5개 통과. 진행 중 `scripts/run_phases.py:51` `_EVALUATE_SECTION_RE` 정규식 numbered prefix 미지원 + `_parse_eval_commands` 코드 펜스 명령 취급 두 결함 발견 → 수정 + `TestParseEvalCommands` 5 케이스 신규 → unittest **126→131/131 PASS**. (5) 재검증 시 round 1 mypy fail → round 2 typed 수정 → Evaluate 통과 → commit `037cf90` 진짜 흐름 확인.
 
 **다음 세션 진입 즉시:**
 
@@ -468,12 +528,14 @@ claude --plugin-dir .
 ```
 
 → 갈래:
-1. **외부 검증 묶음** — (1b) 모호 입력 / (2) 빈 코드 스킵 / (5) typecheck 깨짐 / (B0) self-apply / (B1) clean-tree happy-path / (nl-ship) commit-message 위임 + phase 미완료 경고 → 외부 프로젝트 셋업 후 일괄 시뮬레이션. 6개 잔여 검증 한 번에. 추천.
-2. **`context-protocol.md` 보강** — git ls-files 0 (init 직후 추적 0) 케이스 명시. 작은 단발 작업.
-3. **hooks 도입** — `dangerous-cmd-guard` 우선. (B1) git 가드와 직교 트랙.
-4. **marketplace 공개 검토** — 위 셋 정착 후.
+1. **setup-protocol.md spec 갱신** — "5항목 1라운드" → "AskUserQuestion maxItems:4 제한 고려 4 묶음 + 별도 PRD 1개" (또는 1~2 라운드 허용). 작은 단발 작업
+2. **(B1) #5 failed 리포트 검증** — 의도적으로 max-rounds(3) 까지 다 fail 시키는 plan + /nl-generate → escalate → stderr 리포트 형식 확인. 외부 트랙
+3. **`context-protocol.md` 보강** — git ls-files 0 (init 직후 추적 0) 케이스 명시. 작은 단발 작업
+4. **nl-ship 잔여 외부 검증** — commit-message 스킬 실호출 위임 + phase 미완료 stderr 경고 케이스. 외부 트랙
+5. **hooks 도입** — `dangerous-cmd-guard` 우선. (B1) git 가드와 직교 트랙
+6. **marketplace 공개 검토** — 위 정착 후
 
-추천 순서: **1 (외부 검증) → 2 (context-protocol 보강) → 3 (hooks) → 4 (marketplace)**.
+추천 순서: **1 (setup-protocol 갱신) → 3 (context-protocol 보강) → 2+4 (외부 검증 잔여) → 5 (hooks) → 6 (marketplace)**.
 
 ---
 
@@ -505,5 +567,6 @@ claude --plugin-dir .
 - [x] **(B1) `/nl-generate` git 가드 본구현** — 헬퍼 4 + EXIT_CODE_GIT_GUARD=6 + main() 분기 + phase passed commit + failed 리포트(`run_phases.py` 842→938줄). `docs/spec/git-guard-protocol.md` 신규(83줄). `nl-generate/SKILL.md` 49→59줄. TestGitGuard 5 시나리오 + 보조 2 = unittest 119→**126/126 PASS**. **자기 검증 ✓** (dirty 차단 메시지 + exit 6 정확) (2026-04-26). 잔여: clean tree happy-path 실호출 검증(외부 트랙)
 - [x] **(C) `docs/philosophy.md` 강제성 섹션 명문화** — 섹션 6 신설(71→93줄). 범용성 X 한 단락 + 강제 항목 7개 표(plan-template/Clarify/Context/reviewer YAML/Evaluate/git 가드/헤드리스 통일) + 단일 진실 출처 매핑. nl-review SKILL frontmatter 정정 동시 처리. unittest 126/126 PASS 회귀 없음 (2026-04-26)
 - [x] **nl-ship 본구현 + self-test ✓** — `skills/nl-ship/SKILL.md` 16→55줄 본구현 + `docs/spec/ship-protocol.md` 89줄 신규 + `README.md` 갱신. /nl-generate phase 1+2 round 1 passed + 자동 commit 2개. **★ self-test**: 본 SKILL 호출로 본 SKILL 의 PR(#1) 생성 → squash merge(`4e01ac1`) → 로컬 main 동기화. unittest 126/126 PASS (2026-04-26). 잔여: commit-message 스킬 실호출 위임 / phase 미완료 stderr 경고 케이스 외부 트랙
+- [x] **외부 검증 1차 + Evaluate 게이트 회귀 결함 2건 수정** — `~/Developer/playground/nl-validation/{empty-codebase,clean-python}` 셋업. (2)(B0)(1b)(B1 4/5)(5) 5/6 통과. (5) 재검증 중 결함 발견: `_EVALUATE_SECTION_RE` numbered prefix 미지원 + `_parse_eval_commands` 코드 펜스 명령 취급. 수정: `run_phases.py:51` 정규식 `(?:\d+\.\s+)?` 추가 + `_parse_eval_commands` 펜스 continue + `TestParseEvalCommands` 5 케이스. unittest 126→**131/131 PASS**. 재검증: round 1 mypy fail → round 2 typed 수정 → Evaluate 통과 → commit `037cf90` (clean-python). 잔여: setup-protocol "1라운드" spec 갱신 / (B1)#5 failed 리포트 / nl-ship 외부 트랙 (2026-04-28)
 - [ ] hooks 추가
 - [ ] marketplace 공개 검토

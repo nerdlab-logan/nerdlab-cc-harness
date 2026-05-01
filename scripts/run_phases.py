@@ -48,7 +48,7 @@ EXIT_CODE_INLINE_INVALID = 5  # --inline 인데 phase ≥ 2 또는 변경 파일
 EXIT_CODE_GIT_GUARD = 6  # git 상태 검증 실패 (.git 없음 또는 dirty tree)
 EVAL_TIMEOUT = 300  # eval 명령 1개당 타임아웃(초)
 
-_EVALUATE_SECTION_RE = re.compile(r"^##\s+Evaluate\s+★", re.MULTILINE)
+_EVALUATE_SECTION_RE = re.compile(r"^##\s+(?:\d+\.\s+)?Evaluate\s+★", re.MULTILINE)
 
 
 @dataclass
@@ -506,6 +506,8 @@ def _parse_eval_commands(plan_path: Path) -> list[str]:
         stripped = line.strip()
         if stripped.startswith("##"):
             break
+        if stripped.startswith("```"):
+            continue
         if stripped and stripped.lower() != "none":
             commands.append(stripped)
     return commands

@@ -525,6 +525,85 @@ class TestRunEvaluate(unittest.TestCase):
         self.assertIn("42", log)
 
 
+class TestParseEvalCommands(unittest.TestCase):
+    """_parse_eval_commands: '## Evaluate ★' 섹션 헤더는 numbered prefix(`## 12. Evaluate ★`)도 인식해야 한다."""
+
+    def _write(self, dir_: Path, body: str) -> Path:
+        p = dir_ / "plan.md"
+        p.write_text(body, encoding="utf-8")
+        return p
+
+    def test_plain_header_parses_commands(self):
+        import tempfile
+        body = (
+            "# Plan: x\n\n"
+            "## Evaluate ★\n\n"
+            "```\n"
+            "mypy src\n"
+            "pytest -q\n"
+            "```\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._write(Path(d), body)
+            cmds = run_phases._parse_eval_commands(plan)
+        self.assertEqual(cmds, ["mypy src", "pytest -q"])
+
+    def test_fenced_block_marker_is_ignored(self):
+        """``` 펜스 마커는 명령으로 취급되면 안 된다 (회귀)."""
+        import tempfile
+        body = (
+            "# Plan: x\n\n"
+            "## Evaluate ★\n\n"
+            "```bash\n"
+            "echo hi\n"
+            "```\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._write(Path(d), body)
+            cmds = run_phases._parse_eval_commands(plan)
+        self.assertEqual(cmds, ["echo hi"])
+
+    def test_numbered_prefix_header_parses_commands(self):
+        """planner 가 만드는 `## 12. Evaluate ★` 형태도 매칭되어야 한다 (회귀)."""
+        import tempfile
+        body = (
+            "# Plan: x\n\n"
+            "## 12. Evaluate ★\n\n"
+            "```\n"
+            ".venv/bin/mypy src tests\n"
+            ".venv/bin/ruff check .\n"
+            ".venv/bin/pytest -q\n"
+            "```\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._write(Path(d), body)
+            cmds = run_phases._parse_eval_commands(plan)
+        self.assertEqual(
+            cmds,
+            [".venv/bin/mypy src tests", ".venv/bin/ruff check .", ".venv/bin/pytest -q"],
+        )
+
+    def test_none_returns_empty_list(self):
+        import tempfile
+        body = (
+            "# Plan: x\n\n"
+            "## 12. Evaluate ★\n\n"
+            "none\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._write(Path(d), body)
+            cmds = run_phases._parse_eval_commands(plan)
+        self.assertEqual(cmds, [])
+
+    def test_missing_section_returns_empty_list(self):
+        import tempfile
+        body = "# Plan: x\n\n## 1. 목표\n\n잡소리\n"
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._write(Path(d), body)
+            cmds = run_phases._parse_eval_commands(plan)
+        self.assertEqual(cmds, [])
+
+
 class TestMakeEvalReview(unittest.TestCase):
     """_make_eval_review 단위 테스트."""
 
